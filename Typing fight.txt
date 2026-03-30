@@ -1,0 +1,239 @@
+import pygame
+import random
+import sys
+import time
+
+pygame.init()
+
+# Setting layar
+WIDTH, HEIGHT = 1000, 650
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("TYPEFURY - Runeblade vs Monster")
+clock = pygame.time.Clock()
+
+# Warna
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+RED = (220, 20, 60)
+GREEN = (50, 205, 50)
+BLUE = (0, 191, 255)
+GOLD = (255, 215, 0)
+DARK = (20, 20, 35)
+PURPLE = (120, 0, 180)
+
+# Font
+font = pygame.font.Font(None, 48)
+small_font = pygame.font.Font(None, 36)
+big_font = pygame.font.Font(None, 72)
+
+class Particle:
+    def __init__(self, x, y, color):
+        self.x = x
+        self.y = y
+        self.vx = random.uniform(-7, 7)
+        self.vy = random.uniform(-10, -3)
+        self.life = 45
+        self.color = color
+        self.size = random.randint(4, 8)
+
+    def update(self):
+        self.x += self.vx
+        self.y += self.vy
+        self.vy += 0.35
+        self.life -= 1
+
+    def draw(self, surface):
+        if self.life > 0:
+            alpha = int(255 * (self.life / 45))
+            size = int(self.size * (self.life / 45))
+            s = pygame.Surface((size*2, size*2), pygame.SRCALPHA)
+            pygame.draw.circle(s, (*self.color, alpha), (size, size), size)
+            surface.blit(s, (self.x - size, self.y - size))
+
+class Monster:
+    def __init__(self, name, max_hp, color, words):
+        self.name = name
+        self.max_hp = max_hp
+        self.hp = max_hp
+        self.color = color
+        self.words = words
+        self.shake = 0
+        self.x = WIDTH // 2 + 80
+        self.y = 220
+
+    def draw(self, surface):
+        shake_offset = random.randint(-self.shake, self.shake) if self.shake > 0 else 0
+        # Badan monster keren
+        pygame.draw.ellipse(surface, self.color, (self.x-90 + shake_offset, self.y-30, 180, 130))   # badan
+        pygame.draw.circle(surface, self.color, (self.x + shake_offset, self.y - 85), 65)         # kepala
+        
+        # Mata menyala
+        pygame.draw.circle(surface, WHITE, (self.x - 30 + shake_offset, self.y - 95), 22)
+        pygame.draw.circle(surface, WHITE, (self.x + 30 + shake_offset, self.y - 95), 22)
+        pygame.draw.circle(surface, (255, 80, 80), (self.x - 30 + shake_offset, self.y - 95), 12)
+        pygame.draw.circle(surface, (255, 80, 80), (self.x + 30 + shake_offset, self.y - 95), 12)
+        
+        # Tanduk / detail keren
+        pygame.draw.polygon(surface, (200, 200, 50), [(self.x-65+shake_offset, self.y-135), (self.x-35+shake_offset, self.y-175), (self.x-10+shake_offset, self.y-130)])
+        pygame.draw.polygon(surface, (200, 200, 50), [(self.x+65+shake_offset, self.y-135), (self.x+35+shake_offset, self.y-175), (self.x+10+shake_offset, self.y-130)])
+        
+        # Nama monster
+        name_text = small_font.render(self.name.upper(), True, WHITE)
+        surface.blit(name_text, (self.x - name_text.get_width()//2 + shake_offset, self.y - 210))
+
+    def take_damage(self, damage):
+        self.hp -= damage
+        self.shake = 15
+        return damage
+
+# Daftar monster super keren
+monster_data = [
+    ("INFERNO WYRM", 320, (255, 80, 0), ["BLAZING", "INFERNO", "HELLFIRE", "PYROCLASM", "SCORCH"]),
+    ("ABYSSAL WRAITH", 280, PURPLE, ["VOID", "SHADOWBIND", "NIGHTMARE", "SOULREAP", "DARKNESS"]),
+    ("THUNDER COLOSSUS", 350, (0, 220, 255), ["THUNDERBOLT", "STORMFURY", "LIGHTNING", "TEMPEST", "ZAP"]),
+    ("VENOM LEVIATHAN", 300, (0, 180, 80), ["TOXIN", "VENOMSTRIKE", "ACIDFANG", "POISON", "NEUROTOXIN"]),
+]
+
+# Game variables
+current_monster = Monster(*random.choice(monster_data))
+player_hp = 200
+score = 0
+combo = 0
+current_input = ""
+target_word = random.choice(current_monster.words)
+last_correct_time = time.time()
+particles = []
+wave = 1
+attack_timer = time.time()
+
+running = True
+game_over = False
+
+while running:
+    screen.fill(DARK)
+    dt = clock.tick(60)
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+
+        if event.type == pygame.KEYDOWN and not game_over:
+            if event.key == pygame.K_BACKSPACE:
+                current_input = current_input[:-1]
+            else:
+                current_input += event.unicode.upper()
+
+                # Auto-check kalau sudah cocok dengan kata
+                if current_input == target_word:
+                    time_taken = time.time() - last_correct_time
+                    speed_bonus = max(0, int(60 / (time_taken + 0.1)))   # semakin cepat = bonus besar
+                    damage = 35 + speed_bonus + (combo * 10)
+                    
+                    current_monster.take_damage(damage)
+                    score += damage * 3
+                    combo += 1
+                    
+                    # Particle explosion epik
+                    explosion_color = current_monster.color
+                    for _ in range(45):
+                        particles.append(Particle(current_monster.x, current_monster.y + 30, explosion_color))
+                    
+                    # Combo ultimate
+                    if combo >= 7:
+                        current_monster.take_damage(80)
+                        for _ in range(80):
+                            p = Particle(current_monster.x, current_monster.y)
+                            p.vx *= 2.2
+                            particles.append(p)
+                        ultimate = big_font.render("ULTIMATE STRIKE!", True, GOLD)
+                        screen.blit(ultimate, (WIDTH//2 - ultimate.get_width()//2, 80))
+                        pygame.display.flip()
+                        pygame.time.wait(120)
+                    
+                    # Reset untuk kata berikutnya
+                    target_word = random.choice(current_monster.words)
+                    current_input = ""
+                    last_correct_time = time.time()
+
+    # Monster menyerang kalau terlalu lama diam
+    if time.time() - attack_timer > 9:
+        player_hp -= 22
+        attack_timer = time.time()
+        # efek getar
+        for _ in range(20):
+            particles.append(Particle(120, HEIGHT - 120, RED))
+
+    # Update particle
+    for p in particles[:]:
+        p.update()
+        if p.life <= 0:
+            particles.remove(p)
+
+    # Shake monster
+    if current_monster.shake > 0:
+        current_monster.shake -= 1
+
+    # Gambar player (Rune Knight)
+    pygame.draw.rect(screen, (100, 100, 255), (80, HEIGHT - 180, 90, 160))   # badan
+    pygame.draw.circle(screen, (255, 220, 180), (125, HEIGHT - 200), 35)     # kepala
+    # pedang
+    pygame.draw.line(screen, GOLD, (150, HEIGHT - 140), (220, HEIGHT - 220), 12)
+
+    # Gambar monster
+    current_monster.draw(screen)
+
+    # HP bar monster
+    hp_ratio = max(0, current_monster.hp / current_monster.max_hp)
+    pygame.draw.rect(screen, RED, (WIDTH//2 - 180, 380, 360, 30))
+    pygame.draw.rect(screen, GREEN, (WIDTH//2 - 180, 380, 360 * hp_ratio, 30))
+    hp_text = small_font.render(f"{int(current_monster.hp)} / {current_monster.max_hp}", True, WHITE)
+    screen.blit(hp_text, (WIDTH//2 - hp_text.get_width()//2, 385))
+
+    # Kata yang harus diketik
+    word_text = big_font.render(target_word, True, BLUE)
+    screen.blit(word_text, (WIDTH//2 - word_text.get_width()//2, 430))
+
+    # Input kamu (warna hijau kalau benar)
+    input_color = GREEN if current_input == target_word[:len(current_input)] else WHITE
+    input_text = font.render(current_input, True, input_color)
+    screen.blit(input_text, (WIDTH//2 - input_text.get_width()//2, 500))
+
+    # Combo
+    if combo > 2:
+        combo_text = small_font.render(f"COMBO x{combo} 🔥", True, GOLD)
+        screen.blit(combo_text, (WIDTH//2 - combo_text.get_width()//2, 555))
+
+    # Player HP + Score + Wave
+    pygame.draw.rect(screen, RED, (50, HEIGHT - 80, 300, 35))
+    pygame.draw.rect(screen, GREEN, (50, HEIGHT - 80, 300 * (player_hp / 200), 35))
+    player_text = small_font.render(f"HP: {int(player_hp)}", True, WHITE)
+    screen.blit(player_text, (70, HEIGHT - 76))
+
+    score_text = small_font.render(f"SCORE: {score}   WAVE: {wave}", True, WHITE)
+    screen.blit(score_text, (WIDTH - 380, 20))
+
+    # Cek menang / kalah
+    if current_monster.hp <= 0:
+        wave += 1
+        # Spawn monster baru yang lebih kuat
+        new_data = random.choice(monster_data)
+        current_monster = Monster(new_data[0], int(new_data[1] * (1 + wave * 0.15)), new_data[2], new_data[3])
+        target_word = random.choice(current_monster.words)
+        current_input = ""
+        last_correct_time = time.time()
+        attack_timer = time.time()
+        combo = 0
+
+    if player_hp <= 0:
+        game_over = True
+        go_text = big_font.render("GAME OVER - KAMU KALAH!", True, RED)
+        screen.blit(go_text, (WIDTH//2 - go_text.get_width()//2, HEIGHT//2 - 50))
+
+    # Particles
+    for p in particles:
+        p.draw(screen)
+
+    pygame.display.flip()
+
+pygame.quit()
+sys.exit()
